@@ -8,10 +8,17 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 let players = {};
 let gameState = {
-    level: 1,
-    round: 1, // Hiệp 1 hoặc Hiệp 2
-    mushrooms: [],
-    star: null
+    level: 1, round: 1, mushrooms: [], star: null,
+    // Định nghĩa bản đồ tường gạch ẩn (1: có tường, 0: đường đi)
+    bricks: [
+        {x: 200, y: 200}, {x: 200, y: 400}, {x: 400, y: 200}, {x: 400, y: 400},
+        {x: 600, y: 300}, {x: 300, y: 100}, {x: 500, y: 500}
+    ],
+    // Danh sách quái vật
+    monsters: [
+        { id: 1, x: 300, y: 300, vx: 2, vy: 0 },
+        { id: 2, x: 500, y: 200, vx: 0, vy: 2 }
+    ]
 };
 
 const rewards = {
@@ -23,34 +30,31 @@ const rewards = {
     6: { nam: "Hôn bạn Nữ", nu: "Nhận 1.000.000đ + Bó hoa" }
 };
 
-// Hàm tạo Ngôi Sao Hy Vọng ngẫu nhiên ở hiệp 2
-function spawnStar() {
-    if (gameState.round === 2 && !gameState.star) {
-        gameState.star = {
-            x: Math.floor(Math.random() * 700) + 50,
-            y: Math.floor(Math.random() * 500) + 50
-        };
-        io.emit('starSpawned', gameState.star);
-    }
-}
+// Vòng lặp cập nhật di chuyển của Quái Vật trên Server (60 khung hình / giây)
+setInterval(() => {
+    gameState.monsters.forEach(monster => {
+        monster.x += monster.vx;
+        monster.y += monster.vy;
+
+        // Quái chạm biên tự quay đầu
+        if (monster.x < 50 || monster.x > 750) monster.vx *= -1;
+        if (monster.y < 50 || monster.y > 550) monster.vy *= -1;
+    });
+    io.emit('updateMonsters', gameState.monsters);
+}, 1000 / 60);
 
 io.on('connection', (socket) => {
     socket.on('joinGame', (gender) => {
         players[socket.id] = {
-            id: socket.id,
-            gender: gender,
-            hp: 100,
-            maxHp: 100,
-            power: 15,
-            basePower: 15,
-            x: gender === 'nam' ? 100 : 700,
-            y: 300
+            id: socket.id, gender: gender, hp: 100, maxHp: 100,
+            power: 20, basePower: 20,
+            x: gender === 'nam' ? 80 : 720, y: 300
         };
         io.emit('updatePlayers', players);
-        socket.emit('initLevel', { level: gameState.level, round: gameState.round, reward: rewards[gameState.level] });
-        
-        // Nếu là hiệp 2, kích hoạt sinh ngôi sao sau 5 giây
-        if (gameState.round === 2) setTimeout(spawnStar, 5000);
+        socket.emit('initLevel', { 
+            level: gameState.level, round: gameState.round, 
+            reward: rewards[gameState.level], bricks: gameState.bricks 
+        });
     });
 
     socket.on('playerMove', (data) => {
@@ -66,48 +70,37 @@ io.on('connection', (socket) => {
         gameState.mushrooms.push(shroom);
         io.emit('mushroomPlaced', shroom);
 
-        // Nấm nổ sau 1.5 giây
         setTimeout(() => {
             gameState.mushrooms = gameState.mushrooms.filter(m => m.id !== shroom.id);
             io.emit('mushroomExploded', shroom);
         }, 1500);
     });
 
-    // Xử lý trúng bom nấm
-    socket.on('hitMushroom', (data) => {
-        let target = players[data.targetId];
+    // Xử lý khi người chơi mất máu (do nấm hoặc do bị quái cắn)
+    socket.on('takeDamage', (data) => {
+        let target = players[socket.id];
         if (target) {
-            target.hp -= data.damage;
+            target.hp -= data.amount;
             if (target.hp <= 0) {
                 target.hp = 0;
-                let winnerId = Object.keys(players).find(id => id !== data.targetId);
+                let winnerId = Object.keys(players).find(id => id !== socket.id);
                 let winner = players[winnerId];
                 
-                // Thưởng/Phạt sức mạnh cho cửa kế tiếp
                 if (winner) {
-                    winner.basePower += 5; // Thắng tăng sức mạnh gốc
-                    target.basePower = Math.max(5, target.basePower - 3); // Thua giảm sức mạnh
+                    winner.basePower += 5;
+                    target.basePower = Math.max(5, target.basePower - 3);
                 }
 
-                io.emit('gameOver', { 
-                    winner: winner ? winner.gender : 'Hòa', 
-                    reward: rewards[gameState.level][winner.gender] 
-                });
+                io.emit('gameOver', { winner: winner ? winner.gender : 'Quái Vật', reward: winner ? rewards[gameState.level][winner.gender] : "Cả hai đều bị phạt!" });
 
-                // Chuyển sang Hiệp 2 hoặc Cửa tiếp theo
-                if (gameState.round === 1) {
-                    gameState.round = 2;
-                } else {
-                    gameState.round = 1;
-                    gameState.level = gameState.level < 6 ? gameState.level + 1 : 1;
-                }
+                // Reset trận mới
+                gameState.round = gameState.round === 1 ? 2 : 1;
+                if (gameState.round === 1) gameState.level = gameState.level < 6 ? gameState.level + 1 : 1;
 
-                // Reset trạng thái trận mới
-                gameState.star = null;
                 for (let p in players) {
                     players[p].hp = 100;
-                    players[p].power = players[p].basePower; // Reset về sức mạnh gốc mới
-                    players[p].x = players[p].gender === 'nam' ? 100 : 700;
+                    players[p].power = players[p].basePower;
+                    players[p].x = players[p].gender === 'nam' ? 80 : 720;
                     players[p].y = 300;
                 }
                 io.emit('resetMatch', { level: gameState.level, round: gameState.round, players, reward: rewards[gameState.level] });
@@ -117,19 +110,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Xử lý nhặt Ngôi Sao Hy Vọng (X2 sức mạnh)
-    socket.on('claimStar', () => {
-        if (players[socket.id] && gameState.star) {
-            players[socket.id].power *= 2; // Nhân đôi sức mạnh hiện tại
-            gameState.star = null;
-            io.emit('starClaimed', { playerId: socket.id, gender: players[socket.id].gender });
-        }
-    });
-
-    socket.on('disconnect', () => {
-        delete players[socket.id];
-        io.emit('updatePlayers', players);
-    });
+    socket.on('disconnect', () => { delete players[socket.id]; io.emit('updatePlayers', players); });
 });
 
 const PORT = process.env.PORT || 3000;
