@@ -23,9 +23,8 @@ const rewards = [
     { nam: "Được hôn bạn Nữ", nu: "Nhận 100.000đ và một bó hoa từ bạn Nam" }
 ];
 
-// Cấu hình 3 Bản đồ khác nhau cho 3 Màn chơi công phu
 const mapsByLevel = {
-    1: [ // Map 1: Cấu trúc cơ bản, thoáng đãng
+    1: [
         [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
         [1,0,0,0,0,0,2,0,2,0,0,2,0,0,1], 
         [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
@@ -38,7 +37,7 @@ const mapsByLevel = {
         [1,2,0,2,0,0,2,0,2,0,0,0,0,0,1], 
         [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
     ],
-    2: [ // Map 2: Mê cung lắt léo, nhiều góc khuất chặn đường
+    2: [
         [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
         [1,0,0,0,1,0,0,2,0,0,1,0,0,0,1],
         [1,0,1,0,1,0,1,1,1,0,1,0,1,0,1],
@@ -51,7 +50,7 @@ const mapsByLevel = {
         [1,0,0,0,1,0,0,2,0,0,1,0,0,0,1],
         [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
     ],
-    3: [ // Map 3: Đấu trường bo tròn, rộng rãi ở giữa nhưng nguy hiểm ở rìa
+    3: [
         [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
         [1,0,0,2,2,2,2,1,2,2,2,2,0,0,1],
         [1,0,1,0,0,0,0,0,0,0,0,0,1,0,1],
@@ -73,11 +72,11 @@ function getCurrentReward() {
     return rewards[index];
 }
 
-// Hàm cấu hình độ khó tăng tiến thông minh dựa trên Cấp độ (Level)
+// ĐÃ SỬA CẤU HÌNH TỐC ĐỘ: Tăng thời gian ms của Quái lên để quái chạy chậm lại rõ rệt
 function getDifficultyConfig(level) {
-    if (level === 1) return { maxMonsters: 6, speed: 500 };  // Quái chậm rề rề
-    if (level === 2) return { maxMonsters: 8, speed: 430 };  // Quái vừa phải
-    return { maxMonsters: 10, speed: 360 };                  // Quái đông và lanh lẹ hơn, người chơi vẫn nhanh gấp đôi (180ms)
+    if (level === 1) return { maxMonsters: 6, speed: 450 };  // Quái đi thong thả
+    if (level === 2) return { maxMonsters: 8, speed: 380 };  // Quái nhanh hơn một chút
+    return { maxMonsters: 10, speed: 260 };                  // Quái Màn 3 nhanh nhất nhưng vẫn chậm hơn người chơi (140ms)
 }
 
 function generateMonsters(currentGrid, level) {
@@ -105,13 +104,12 @@ monsters = generateMonsters(gameGrid, currentLevel);
 function resetMatch() {
     isMatchActive = true;
     
-    // Đảm bảo lấy đúng Map của Level hiện tại, phòng trường hợp vừa qua màn
     let mapTemplate = mapsByLevel[currentLevel] || mapsByLevel[3];
     gameGrid = JSON.parse(JSON.stringify(mapTemplate));
 
     for (let id in players) {
         players[id].hp = 100;
-        players[id].moveDelay = 180; // Giữ nguyên tốc độ chạy cực nhanh cho người chơi
+        players[id].moveDelay = 140; // ĐÃ SỬA: Giảm từ 180ms xuống 140ms giúp Người chơi di chuyển cực kỳ nhạy và nhanh lướt
         if (players[id].gender === 'nam') { 
             players[id].gridX = 1; players[id].gridY = 1; 
         } else { 
@@ -119,14 +117,13 @@ function resetMatch() {
         }
     }
 
-    // Đổ gạch ngẫu nhiên lên những ô trống quy định (Trừ vùng an toàn)
     for (let y = 1; y < 10; y++) {
         for (let x = 1; x < 14; x++) {
             if (gameGrid[y][x] === 0) {
                 let isPrinceSafeZone = (x <= 3 && y <= 3);
                 let isPrincessSafeZone = (x >= 11 && y >= 7);
                 if (!isPrinceSafeZone && !isPrincessSafeZone) {
-                    if (Math.random() > 0.5) gameGrid[y][x] = 2; // Sinh khối gỗ ngẫu nhiên
+                    if (Math.random() > 0.5) gameGrid[y][x] = 2; 
                 }
             }
         }
@@ -135,7 +132,6 @@ function resetMatch() {
     mushrooms = {}; items = {}; 
     monsters = generateMonsters(gameGrid, currentLevel);
     
-    // Reset lại vòng lặp quái vật phù hợp với tốc độ mới của Màn này
     restartMonsterInterval();
 
     io.emit('resetMatch', { grid: gameGrid, level: currentLevel, round: currentRound, reward: getCurrentReward() });
@@ -177,10 +173,9 @@ function restartMonsterInterval() {
             });
             io.emit('updateMonsters', monsters);
         }
-    }, config.speed); // Chạy theo tốc độ động tăng tiến của màn đó
+    }, config.speed); 
 }
 
-// Kích hoạt vòng lặp quái vật lần đầu tiên
 restartMonsterInterval();
 
 function checkDeath(pId) {
@@ -207,7 +202,8 @@ function checkDeath(pId) {
 io.on('connection', (socket) => {
     socket.on('joinGame', (gender) => {
         let gX = gender === 'nam' ? 1 : 13; let gY = gender === 'nam' ? 1 : 9;
-        players[socket.id] = { id: socket.id, gender: gender, gridX: gX, gridY: gY, hp: 100, moveDelay: 180, lastMoveTime: 0 };
+        // Đã đồng bộ tốc độ khởi tạo 140ms mượt mà tại đây
+        players[socket.id] = { id: socket.id, gender: gender, gridX: gX, gridY: gY, hp: 100, moveDelay: 140, lastMoveTime: 0 };
         
         socket.emit('initGame', { grid: gameGrid, level: currentLevel, round: currentRound, reward: getCurrentReward() });
         io.emit('updatePlayers', players); io.emit('updateMonsters', monsters); io.emit('updateItems', items);
@@ -223,7 +219,7 @@ io.on('connection', (socket) => {
             p.gridX = nX; p.gridY = nY; p.lastMoveTime = now;
             let itemKey = `${nX}_${nY}`;
             if (items[itemKey]) {
-                if (items[itemKey].type === 'speed') p.moveDelay = Math.max(90, p.moveDelay - 20);
+                if (items[itemKey].type === 'speed') p.moveDelay = Math.max(80, p.moveDelay - 20); // Ăn giày chạy càng nhanh (tối đa đạt 80ms)
                 else if (items[itemKey].type === 'heal') p.hp = Math.min(100, p.hp + 25);
                 delete items[itemKey]; io.emit('updateItems', items);
             }
@@ -290,13 +286,12 @@ io.on('connection', (socket) => {
     });
 
     socket.on('nextMatchRequest', (isWin) => {
-        // Nếu người sống sót ấn nút "Xác nhận chiến thắng", hệ thống tăng hiệp đấu
         if (isWin) {
             currentRound++;
-            if (currentRound > 3) { // Đánh hết 3 Hiệp (Round) thì sẽ chính thức qua Màn (Level) tiếp theo
+            if (currentRound > 3) { 
                 currentRound = 1;
                 currentLevel++;
-                if (currentLevel > 3) currentLevel = 1; // Đánh xong Màn 3 thì quay lại Màn 1 giải trí vòng lặp
+                if (currentLevel > 3) currentLevel = 1; 
             }
         }
         resetMatch();
