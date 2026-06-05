@@ -4,7 +4,16 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
+
+// CẤU HÌNH CORS CHUẨN: Mở rộng cho mọi domain kết nối vào không bị chặn
+const io = new Server(server, { 
+    cors: { 
+        origin: "*", 
+        methods: ["GET", "POST"],
+        allowedHeaders: ["my-custom-header"],
+        credentials: true
+    } 
+});
 
 let players = {};
 let monsters = [];
@@ -72,11 +81,10 @@ function getCurrentReward() {
     return rewards[index];
 }
 
-// ĐÃ SỬA CẤU HÌNH TỐC ĐỘ: Tăng thời gian ms của Quái lên để quái chạy chậm lại rõ rệt
 function getDifficultyConfig(level) {
-    if (level === 1) return { maxMonsters: 6, speed: 450 };  // Quái đi thong thả
-    if (level === 2) return { maxMonsters: 8, speed: 380 };  // Quái nhanh hơn một chút
-    return { maxMonsters: 10, speed: 260 };                  // Quái Màn 3 nhanh nhất nhưng vẫn chậm hơn người chơi (140ms)
+    if (level === 1) return { maxMonsters: 6, speed: 450 };
+    if (level === 2) return { maxMonsters: 8, speed: 380 };
+    return { maxMonsters: 10, speed: 260 };
 }
 
 function generateMonsters(currentGrid, level) {
@@ -103,13 +111,12 @@ monsters = generateMonsters(gameGrid, currentLevel);
 
 function resetMatch() {
     isMatchActive = true;
-    
     let mapTemplate = mapsByLevel[currentLevel] || mapsByLevel[3];
     gameGrid = JSON.parse(JSON.stringify(mapTemplate));
 
     for (let id in players) {
         players[id].hp = 100;
-        players[id].moveDelay = 140; // ĐÃ SỬA: Giảm từ 180ms xuống 140ms giúp Người chơi di chuyển cực kỳ nhạy và nhanh lướt
+        players[id].moveDelay = 140; 
         if (players[id].gender === 'nam') { 
             players[id].gridX = 1; players[id].gridY = 1; 
         } else { 
@@ -131,7 +138,6 @@ function resetMatch() {
     
     mushrooms = {}; items = {}; 
     monsters = generateMonsters(gameGrid, currentLevel);
-    
     restartMonsterInterval();
 
     io.emit('resetMatch', { grid: gameGrid, level: currentLevel, round: currentRound, reward: getCurrentReward() });
@@ -184,7 +190,6 @@ function checkDeath(pId) {
     if (players[pId] && players[pId].hp <= 0) {
         isMatchActive = false;
         let currentReward = getCurrentReward();
-        
         io.to(pId).emit('gameOver');
 
         for (let otherId in players) {
@@ -200,12 +205,13 @@ function checkDeath(pId) {
 }
 
 io.on('connection', (socket) => {
+    // Gửi dữ liệu khởi tạo ngay khi có người connect để kích hoạt client
+    socket.emit('initGame', { grid: gameGrid, level: currentLevel, round: currentRound, reward: getCurrentReward() });
+
     socket.on('joinGame', (gender) => {
         let gX = gender === 'nam' ? 1 : 13; let gY = gender === 'nam' ? 1 : 9;
-        // Đã đồng bộ tốc độ khởi tạo 140ms mượt mà tại đây
         players[socket.id] = { id: socket.id, gender: gender, gridX: gX, gridY: gY, hp: 100, moveDelay: 140, lastMoveTime: 0 };
         
-        socket.emit('initGame', { grid: gameGrid, level: currentLevel, round: currentRound, reward: getCurrentReward() });
         io.emit('updatePlayers', players); io.emit('updateMonsters', monsters); io.emit('updateItems', items);
     });
 
@@ -219,7 +225,7 @@ io.on('connection', (socket) => {
             p.gridX = nX; p.gridY = nY; p.lastMoveTime = now;
             let itemKey = `${nX}_${nY}`;
             if (items[itemKey]) {
-                if (items[itemKey].type === 'speed') p.moveDelay = Math.max(80, p.moveDelay - 20); // Ăn giày chạy càng nhanh (tối đa đạt 80ms)
+                if (items[itemKey].type === 'speed') p.moveDelay = Math.max(80, p.moveDelay - 20);
                 else if (items[itemKey].type === 'heal') p.hp = Math.min(100, p.hp + 25);
                 delete items[itemKey]; io.emit('updateItems', items);
             }
@@ -289,8 +295,7 @@ io.on('connection', (socket) => {
         if (isWin) {
             currentRound++;
             if (currentRound > 3) { 
-                currentRound = 1;
-                currentLevel++;
+                currentRound = 1; currentLevel++;
                 if (currentLevel > 3) currentLevel = 1; 
             }
         }
