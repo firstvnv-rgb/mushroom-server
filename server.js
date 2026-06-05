@@ -13,12 +13,13 @@ let items = {};
 let currentLevel = 1;
 let currentRound = 1;
 
+// Cơ cấu giải thưởng từ Cửa 1 đến Cửa 6 theo yêu cầu
 const rewards = [
     { nam: "Lời tỏ tình từ nhân vật Nữ", nu: "Được tát yêu bạn Nam 5 cái HOẶC nhận 1 vật phẩm tăng sức mạnh bất kỳ cho cửa sau" },
     { nam: "Được mời bạn Nữ đi ăn", nu: "Nhận 10.000đ từ bạn Nam và được tát yêu bạn Nam 10 cái" },
     { nam: "Được cầm tay bạn Nữ", nu: "Nhận 50.000đ từ bạn Nam HOẶC tát yêu 20 cái" },
     { nam: "Được ôm bạn Nữ", nu: "Nhận 500.000đ từ bạn Nam HOẶC tát yêu bạn Nam 50 cái" },
-    { nam: "Được thơm bạn Nữ", nu: "Nhận 50.000đ và một bó hoa từ bạn Nam" },
+    { nam: "Được thơm bạn Nữ", nu: "Nhận 500.000đ và một bó hoa từ bạn Nam" },
     { nam: "Được hôn bạn Nữ", nu: "Nhận 1.000.000đ và một bó hoa từ bạn Nam" }
 ];
 
@@ -27,6 +28,7 @@ function getCurrentReward() {
     return rewards[index];
 }
 
+// 1 là Tường đá (bất tử), 2 là Gạch đỏ (phá được), 0 là Đường đi
 let gameGrid = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
     [1,0,0,2,0,0,2,0,2,0,0,2,0,0,1],
@@ -49,6 +51,7 @@ function generateMonsters(currentGrid) {
         attempts++;
         let gridX = Math.floor(Math.random() * 13) + 1;
         let gridY = Math.floor(Math.random() * 9) + 1;
+        // Quái vật không được xuất hiện ở vùng hồi sinh của người chơi
         if ((gridX < 4 && gridY < 4) || (gridX > 10 && gridY > 6)) continue;
         if (currentGrid[gridY] && currentGrid[gridY][gridX] === 0) {
             let id = 'm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
@@ -63,18 +66,32 @@ function generateMonsters(currentGrid) {
 
 monsters = generateMonsters(gameGrid);
 
+// ĐÃ CẬP NHẬT: Tích hợp mở rộng vùng an toàn 3x3 chống kẹt tường cho Công chúa
 function resetMatch() {
     for (let id in players) {
         players[id].hp = 100;
         players[id].moveDelay = 180;
-        if (players[id].gender === 'nam') { players[id].gridX = 1; players[id].gridY = 1; }
-        else { players[id].gridX = 13; players[id].gridY = 9; }
+        if (players[id].gender === 'nam') { 
+            players[id].gridX = 1; players[id].gridY = 1; 
+        } else { 
+            players[id].gridX = 13; players[id].gridY = 9; 
+        }
     }
+
     for (let y = 1; y < 10; y++) {
         for (let x = 1; x < 14; x++) {
             if (gameGrid[y][x] !== 1) {
-                if ((x < 3 && y < 3) || (x > 11 && y > 7)) gameGrid[y][x] = 0;
-                else gameGrid[y][x] = Math.random() > 0.45 ? 2 : 0;
+                // Vùng an toàn 3x3 cho Hoàng tử (Góc trên bên trái)
+                let isPrinceSafeZone = (x <= 3 && y <= 3);
+                
+                // Vùng an toàn 3x3 cho Công chúa (Góc dưới bên phải) - Giúp không bao giờ bị gạch vây quanh
+                let isPrincessSafeZone = (x >= 11 && y >= 7);
+
+                if (isPrinceSafeZone || isPrincessSafeZone) {
+                    gameGrid[y][x] = 0; // Ép buộc ô trống để tạo lối đi thông thoáng
+                } else {
+                    gameGrid[y][x] = Math.random() > 0.45 ? 2 : 0;
+                }
             }
         }
     }
@@ -113,7 +130,6 @@ setInterval(() => {
     }
 }, 450);
 
-// ĐÃ SỬA: Xóa bỏ hàm setTimeout tự động chuyển ván ở đây
 function checkDeath(pId) {
     if (players[pId] && players[pId].hp <= 0) {
         let deadPlayer = players[pId];
@@ -215,9 +231,7 @@ io.on('connection', (socket) => {
         }, 2000);
     });
 
-    // TÍNH NĂNG MỚI: Lắng nghe khi người chơi nhấn nút "XÁC NHẬN" trên màn hình
     socket.on('nextMatchRequest', (isWin) => {
-        // Chỉ khi thắng thì mới tiến cấp Cửa/Hiệp, nếu Thua sẽ chơi lại Hiệp đó
         if (isWin) {
             currentRound++;
             if (currentRound > 3) {
