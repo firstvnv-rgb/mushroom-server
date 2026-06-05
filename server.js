@@ -43,7 +43,7 @@ let gameGrid = [
 
 function generateMonsters(currentGrid) {
     let monsterList = [];
-    let maxMonsters = 8;
+    let maxMonsters = 8; 
     let attempts = 0;
     while (monsterList.length < maxMonsters && attempts < 100) {
         attempts++;
@@ -122,15 +122,15 @@ setInterval(() => {
     }
 }, 450);
 
-// ĐÃ SỬA CHÍNH XÁC: Người nào chết thì gửi riêng Thất Bại cho người đó, người kia nhận phần thưởng Chiến Thắng!
+// ĐÃ SỬA CHUYỂN ĐỔI: Cơ chế PvP Sinh Tử mới theo đúng yêu cầu của bạn
 function checkDeath(pId) {
     if (players[pId] && players[pId].hp <= 0) {
         let currentReward = getCurrentReward();
         
-        // 1. Gửi thông báo thất bại RIÊNG (io.to) cho người vừa hết máu
+        // 1. Gửi kết quả thua cuộc cho người vừa hết máu trước
         io.to(pId).emit('gameOver');
 
-        // 2. Tìm người chơi còn lại đang ở trong game để trao giải chiến thắng
+        // 2. Trao chiến thắng NGAY LẬP TỨC cho người còn sống sót (dù quái còn hay hết)
         for (let otherId in players) {
             if (otherId !== pId) {
                 let winner = players[otherId];
@@ -218,19 +218,13 @@ io.on('connection', (socket) => {
                 io.emit('mushroomExploded', { shroom: { id: shroomKey }, explodedTiles, newGrid: gameGrid });
                 io.emit('updateMonsters', monsters); io.emit('updateItems', items);
 
-                // Nếu có người trúng bom chết, kích hoạt xử lý kết quả
+                // KIỂM TRA ĐIỀU KIỆN KẾT THÚC VÁN THEO LUẬT MỚI:
                 if (deadPlayerIds.length > 0) {
+                    // Nếu có người trúng bom chết -> Người còn lại thắng ngay (Trường hợp 2)
                     deadPlayerIds.forEach(id => checkDeath(id));
-                } else if (monsters.length === 0) {
-                    // Nếu không ai chết và quái vật hết sạch -> Cả 2 cùng thắng quái vật
-                    let currentReward = getCurrentReward();
-                    for (let id in players) {
-                        let pObj = players[id];
-                        io.to(id).emit('gameWin', {
-                            winnerId: id,
-                            rewardText: pObj.gender === 'nam' ? currentReward.nam : currentReward.nu
-                        });
-                    }
+                } else {
+                    // Đã loại bỏ logic "quái chết hết thì tự thắng chung". 
+                    // Giờ đây quái hết thì game vẫn chạy bình thường cho đến khi có một người gục ngã (Trường hợp 1).
                 }
             }
         }, 2000);
