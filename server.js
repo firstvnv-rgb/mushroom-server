@@ -2,7 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 
-const app = report = express();
+const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
@@ -14,7 +14,7 @@ let currentLevel = 1;
 let currentRound = 1;
 
 const rewards = [
-    { nam: "Lời tỏ tình từ Nữ", nu: "Lời tỏ tình từ Nữ" },
+    { nam: "Lời tỏ tình từ Nữ", nu: "Lời tỏ tình từ Nam" },
     { nam: "Một cái nắm tay", nu: "Một cái nắm tay" },
     { nam: "Cái ôm ấm áp", nu: "Cái ôm ấm áp" },
     { nam: "Nụ hôn lên má", nu: "Nụ hôn lên má" },
@@ -36,19 +36,15 @@ let gameGrid = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ];
 
-// THUẬT TOÁN SINH QUÁI VẬT HOÀN HẢO TRÊN Ô TRỐNG KHÔNG KẸT
 function generateMonsters(currentGrid) {
     let monsterList = [];
-    let maxMonsters = 4; // Tăng lên 4 con quái vật cho kịch tính
+    let maxMonsters = 4;
     let attempts = 0;
-    while (monsterList.length < maxMonsters && attempts < 150) {
+    while (monsterList.length < maxMonsters && attempts < 100) {
         attempts++;
         let gridX = Math.floor(Math.random() * 13) + 1;
         let gridY = Math.floor(Math.random() * 9) + 1;
-        
-        // Tránh sinh quái ngay góc xuất phát của Player 1 và Player 2
         if ((gridX < 4 && gridY < 4) || (gridX > 10 && gridY > 6)) continue;
-        
         if (currentGrid[gridY] && currentGrid[gridY][gridX] === 0) {
             let id = 'm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
             monsterList.push({
@@ -82,7 +78,6 @@ function resetMatch() {
     io.emit('updatePlayers', players); io.emit('updateMonsters', monsters); io.emit('updateItems', items);
 }
 
-// QUÁI VẬT DI CHUYỂN TUẦN TRA VÀ TẤN CÔNG PLAYER VỚI NHỊP 450MS CHUẨN
 setInterval(() => {
     if (monsters.length > 0) {
         monsters.forEach(m => {
@@ -102,13 +97,10 @@ setInterval(() => {
             }
 
             for (let pId in players) {
-                let pX = Math.round(players[pId].gridX);
-                let pY = Math.round(players[pId].gridY);
+                let pX = Math.round(players[pId].gridX); let pY = Math.round(players[pId].gridY);
                 if (pX === m.gridX && pY === m.gridY) {
                     players[pId].hp = Math.max(0, players[pId].hp - 15);
-                    io.to(pId).emit('hurtEffect');
-                    io.emit('updatePlayers', players);
-                    checkDeath(pId);
+                    io.to(pId).emit('hurtEffect'); io.emit('updatePlayers', players); checkDeath(pId);
                 }
             }
         });
@@ -116,11 +108,25 @@ setInterval(() => {
     }
 }, 450);
 
+// FIX LỖI TẠI ĐÂY: Phát sự kiện báo chính xác ID người chơi nào vừa bị chết sạch máu
 function checkDeath(pId) {
     if (players[pId] && players[pId].hp <= 0) {
-        let winnerGender = players[pId].gender === 'nam' ? 'nu' : 'nam';
-        io.emit('gameOver', { winner: winnerGender, reward: winnerGender === 'nam' ? currentReward.nam : currentReward.nu });
-        setTimeout(() => { currentRound++; if (currentRound > 3) { currentRound = 1; currentLevel++; } resetMatch(); }, 4000);
+        let deadPlayer = players[pId];
+        
+        // Gửi thông báo GameOver ngay lập tức, kèm theo thông tin của người vừa thua cuộc
+        io.emit('gameOver', { 
+            loserId: pId,
+            loserGender: deadPlayer.gender,
+            rewardText: deadPlayer.gender === 'nam' ? currentReward.nam : currentReward.nu
+        });
+        
+        // Đợi 4 giây hiển thị bảng UI rồi tự động reset ván đấu mới mượt mà
+        setTimeout(() => { 
+            currentRound++; 
+            if (currentRound > 3) { currentRound = 1; currentLevel++; } 
+            currentReward = rewards[(currentLevel-1) % rewards.length]; 
+            resetMatch(); 
+        }, 4000);
     }
 }
 
@@ -135,9 +141,7 @@ io.on('connection', (socket) => {
     socket.on('requestMove', (dir) => {
         let p = players[socket.id]; if (!p || p.hp <= 0) return;
         let now = Date.now(); if (now - p.lastMoveTime < p.moveDelay) return;
-
-        let currentX = Math.round(p.gridX); let currentY = Math.round(p.gridY);
-        let nX = currentX + dir.dirX; let nY = currentY + dir.dirY;
+        let nX = Math.round(p.gridX) + dir.dirX; let nY = Math.round(p.gridY) + dir.dirY;
 
         if (gameGrid[nY] && gameGrid[nY][nX] === 0) {
             p.gridX = nX; p.gridY = nY; p.lastMoveTime = now;
@@ -147,8 +151,7 @@ io.on('connection', (socket) => {
                 else if (items[itemKey].type === 'heal') p.hp = Math.min(100, p.hp + 25);
                 delete items[itemKey]; io.emit('updateItems', items);
             }
-            io.emit('playerMoved', { id: socket.id, gridX: nX, gridY: nY });
-            io.emit('updatePlayers', players);
+            io.emit('playerMoved', { id: socket.id, gridX: nX, gridY: nY }); io.emit('updatePlayers', players);
         }
     });
 
@@ -164,13 +167,11 @@ io.on('connection', (socket) => {
             if (mushrooms[shroomKey]) {
                 let explodedTiles = [{ x: curX, y: curY }];
                 let directions = [[0,1], [0,-1], [1,0], [-1,0]];
-                
                 directions.forEach(dir => {
                     let tx = curX + dir[0]; let ty = curY + dir[1];
                     if (ty >= 0 && ty < 11 && tx >= 0 && tx < 15) {
                         if (gameGrid[ty][tx] !== 1) {
-                            explodedTiles.push({ x: tx, y: ty });
-                            if (gameGrid[ty][tx] === 2) gameGrid[ty][tx] = 0;
+                            explodedTiles.push({ x: tx, y: ty }); if (gameGrid[ty][tx] === 2) gameGrid[ty][tx] = 0;
                         }
                     }
                 });
@@ -179,24 +180,20 @@ io.on('connection', (socket) => {
                     monsters = monsters.filter(m => {
                         if (m.gridX === tile.x && m.gridY === tile.y) {
                             if (Math.random() < 0.5) {
-                                let itemType = Math.random() > 0.5 ? 'speed' : 'heal';
-                                items[`${tile.x}_${tile.y}`] = { x: tile.x, y: tile.y, type: itemType };
+                                items[`${tile.x}_${tile.y}`] = { x: tile.x, y: tile.y, type: Math.random() > 0.5 ? 'speed' : 'heal' };
                             }
                             return false;
                         }
                         return true;
                     });
-
                     for (let pId in players) {
                         let pX = Math.round(players[pId].gridX); let pY = Math.round(players[pId].gridY);
                         if (pX === tile.x && pY === tile.y) {
-                            io.to(pId).emit('hurtEffect');
-                            players[pId].hp = Math.max(0, players[pId].hp - 25);
+                            io.to(pId).emit('hurtEffect'); players[pId].hp = Math.max(0, players[pId].hp - 25);
                             io.emit('updatePlayers', players); checkDeath(pId);
                         }
                     }
                 });
-
                 delete mushrooms[shroomKey];
                 io.emit('mushroomExploded', { shroom: { id: shroomKey }, explodedTiles, newGrid: gameGrid });
                 io.emit('updateMonsters', monsters); io.emit('updateItems', items);
@@ -208,4 +205,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => { console.log(`Server master version 7.5 up on port ${PORT}`); });
+server.listen(PORT, () => { console.log(`Server live on port ${PORT}`); });
