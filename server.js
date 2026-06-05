@@ -43,7 +43,7 @@ let gameGrid = [
 
 function generateMonsters(currentGrid) {
     let monsterList = [];
-    let maxMonsters = 4;
+    let maxMonsters = 8;
     let attempts = 0;
     while (monsterList.length < maxMonsters && attempts < 100) {
         attempts++;
