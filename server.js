@@ -12,41 +12,79 @@ let mushrooms = {};
 let items = {}; 
 let currentLevel = 1;
 let currentRound = 1;
-let isMatchActive = true; // Biến kiểm tra ván đấu có đang diễn ra hay không
+let isMatchActive = true;
 
 const rewards = [
     { nam: "Lời tỏ tình từ nhân vật Nữ", nu: "Được tát yêu bạn Nam 5 cái HOẶC nhận 1 vật phẩm tăng sức mạnh bất kỳ cho cửa sau" },
     { nam: "Được mời bạn Nữ đi ăn", nu: "Nhận 10.000đ từ bạn Nam và được tát yêu bạn Nam 10 cái" },
     { nam: "Được cầm tay bạn Nữ", nu: "Nhận 50.000đ từ bạn Nam HOẶC tát yêu 20 cái" },
     { nam: "Được ôm bạn Nữ", nu: "Nhận 500.000đ từ bạn Nam HOẶC tát yêu bạn Nam 50 cái" },
-    { nam: "Được thơm bạn Nữ", nu: "Nhận 500.000đ và một bó hoa từ bạn Nam" },
-    { nam: "Được hôn bạn Nữ", nu: "Nhận 1.000.000đ và một bó hoa từ bạn Nam" }
+    { nam: "Được thơm bạn Nữ", nu: "Nhận 50.000đ và một bó hoa từ bạn Nam" },
+    { nam: "Được hôn bạn Nữ", nu: "Nhận 100.000đ và một bó hoa từ bạn Nam" }
 ];
+
+// Cấu hình 3 Bản đồ khác nhau cho 3 Màn chơi công phu
+const mapsByLevel = {
+    1: [ // Map 1: Cấu trúc cơ bản, thoáng đãng
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,0,0,0,0,0,2,0,2,0,0,2,0,0,1], 
+        [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
+        [1,0,0,2,0,2,0,2,0,2,0,2,0,2,1],
+        [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
+        [1,2,0,2,0,0,2,0,2,0,0,2,0,2,1],
+        [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
+        [1,0,2,0,2,0,2,0,2,0,2,0,0,0,1],
+        [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
+        [1,2,0,2,0,0,2,0,2,0,0,0,0,0,1], 
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    ],
+    2: [ // Map 2: Mê cung lắt léo, nhiều góc khuất chặn đường
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,0,0,0,1,0,0,2,0,0,1,0,0,0,1],
+        [1,0,1,0,1,0,1,1,1,0,1,0,1,0,1],
+        [1,2,1,0,0,0,2,0,2,0,0,0,1,2,1],
+        [1,0,1,1,1,0,1,0,1,0,1,1,1,0,1],
+        [1,0,0,0,0,2,1,0,1,2,0,0,0,0,1],
+        [1,0,1,1,1,0,1,0,1,0,1,1,1,0,1],
+        [1,2,1,0,0,0,2,0,2,0,0,0,1,2,1],
+        [1,0,1,0,1,0,1,1,1,0,1,0,1,0,1],
+        [1,0,0,0,1,0,0,2,0,0,1,0,0,0,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    ],
+    3: [ // Map 3: Đấu trường bo tròn, rộng rãi ở giữa nhưng nguy hiểm ở rìa
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,0,0,2,2,2,2,1,2,2,2,2,0,0,1],
+        [1,0,1,0,0,0,0,0,0,0,0,0,1,0,1],
+        [1,2,0,0,1,1,0,2,0,1,1,0,0,2,1],
+        [1,2,0,0,1,0,0,0,0,0,1,0,0,2,1],
+        [1,2,0,2,0,0,2,1,2,0,0,2,0,2,1],
+        [1,2,0,0,1,0,0,0,0,0,1,0,0,2,1],
+        [1,2,0,0,1,1,0,2,0,1,1,0,0,2,1],
+        [1,0,1,0,0,0,0,0,0,0,0,0,1,0,1],
+        [1,0,0,2,2,2,2,1,2,2,2,2,0,0,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    ]
+};
+
+let gameGrid = JSON.parse(JSON.stringify(mapsByLevel[1]));
 
 function getCurrentReward() {
     let index = (currentLevel - 1) % 6;
     return rewards[index];
 }
 
-let gameGrid = [
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,0,0,0,0,0,2,0,2,0,0,2,0,0,1], 
-    [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
-    [1,0,0,2,0,2,0,2,0,2,0,2,0,2,1],
-    [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
-    [1,2,0,2,0,0,2,0,2,0,0,2,0,2,1],
-    [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
-    [1,0,2,0,2,0,2,0,2,0,2,0,0,0,1],
-    [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
-    [1,2,0,2,0,0,2,0,2,0,0,0,0,0,1], 
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-];
+// Hàm cấu hình độ khó tăng tiến thông minh dựa trên Cấp độ (Level)
+function getDifficultyConfig(level) {
+    if (level === 1) return { maxMonsters: 6, speed: 500 };  // Quái chậm rề rề
+    if (level === 2) return { maxMonsters: 8, speed: 430 };  // Quái vừa phải
+    return { maxMonsters: 10, speed: 360 };                  // Quái đông và lanh lẹ hơn, người chơi vẫn nhanh gấp đôi (180ms)
+}
 
-function generateMonsters(currentGrid) {
+function generateMonsters(currentGrid, level) {
     let monsterList = [];
-    let maxMonsters = 8; 
+    let config = getDifficultyConfig(level);
     let attempts = 0;
-    while (monsterList.length < maxMonsters && attempts < 100) {
+    while (monsterList.length < config.maxMonsters && attempts < 150) {
         attempts++;
         let gridX = Math.floor(Math.random() * 13) + 1;
         let gridY = Math.floor(Math.random() * 9) + 1;
@@ -62,16 +100,18 @@ function generateMonsters(currentGrid) {
     return monsterList;
 }
 
-// Khởi tạo quái vật ban đầu
-monsters = generateMonsters(gameGrid);
+monsters = generateMonsters(gameGrid, currentLevel);
 
 function resetMatch() {
-    isMatchActive = true; // Kích hoạt trạng thái ván mới đang chạy
+    isMatchActive = true;
     
-    // Đặt lại máu và vị trí hồi sinh cho người chơi hiện có
+    // Đảm bảo lấy đúng Map của Level hiện tại, phòng trường hợp vừa qua màn
+    let mapTemplate = mapsByLevel[currentLevel] || mapsByLevel[3];
+    gameGrid = JSON.parse(JSON.stringify(mapTemplate));
+
     for (let id in players) {
         players[id].hp = 100;
-        players[id].moveDelay = 180;
+        players[id].moveDelay = 180; // Giữ nguyên tốc độ chạy cực nhanh cho người chơi
         if (players[id].gender === 'nam') { 
             players[id].gridX = 1; players[id].gridY = 1; 
         } else { 
@@ -79,72 +119,79 @@ function resetMatch() {
         }
     }
 
-    // Làm mới bản đồ gạch ngẫu nhiên, giữ vùng an toàn
+    // Đổ gạch ngẫu nhiên lên những ô trống quy định (Trừ vùng an toàn)
     for (let y = 1; y < 10; y++) {
         for (let x = 1; x < 14; x++) {
-            if (gameGrid[y][x] !== 1) {
+            if (gameGrid[y][x] === 0) {
                 let isPrinceSafeZone = (x <= 3 && y <= 3);
                 let isPrincessSafeZone = (x >= 11 && y >= 7);
-                if (isPrinceSafeZone || isPrincessSafeZone) {
-                    gameGrid[y][x] = 0; 
-                } else {
-                    gameGrid[y][x] = Math.random() > 0.45 ? 2 : 0;
+                if (!isPrinceSafeZone && !isPrincessSafeZone) {
+                    if (Math.random() > 0.5) gameGrid[y][x] = 2; // Sinh khối gỗ ngẫu nhiên
                 }
             }
         }
     }
-    mushrooms = {}; items = {}; monsters = generateMonsters(gameGrid);
     
-    // Phát lệnh làm mới màn hình cho tất cả thiết bị
+    mushrooms = {}; items = {}; 
+    monsters = generateMonsters(gameGrid, currentLevel);
+    
+    // Reset lại vòng lặp quái vật phù hợp với tốc độ mới của Màn này
+    restartMonsterInterval();
+
     io.emit('resetMatch', { grid: gameGrid, level: currentLevel, round: currentRound, reward: getCurrentReward() });
     io.emit('updatePlayers', players); io.emit('updateMonsters', monsters); io.emit('updateItems', items);
 }
 
-// Vòng lặp điều khiển quái vật di chuyển
-setInterval(() => {
-    // ĐÃ SỬA: Nếu ván đấu đã kết thúc (chờ ấn nút chơi lại), đóng băng quái vật không cho di chuyển hay cắn người chơi nữa
-    if (!isMatchActive) return;
+let monsterTimer = null;
+function restartMonsterInterval() {
+    if (monsterTimer) clearInterval(monsterTimer);
+    let config = getDifficultyConfig(currentLevel);
+    
+    monsterTimer = setInterval(() => {
+        if (!isMatchActive) return;
 
-    if (monsters.length > 0) {
-        monsters.forEach(m => {
-            let nextX = m.gridX + m.dirX; let nextY = m.gridY + m.dirY;
-            if (nextY >= 0 && nextY < 11 && nextX >= 0 && nextX < 15 && gameGrid[nextY][nextX] === 0) {
-                m.gridX = nextX; m.gridY = nextY;
-            } else {
-                let dirs = [[0,1], [0,-1], [1,0], [-1,0]];
-                let validDirs = dirs.filter(d => {
-                    let tx = m.gridX + d[0]; let ty = m.gridY + d[1];
-                    return ty >= 0 && ty < 11 && tx >= 0 && tx < 15 && gameGrid[ty][tx] === 0;
-                });
-                if (validDirs.length > 0) {
-                    let chosen = validDirs[Math.floor(Math.random() * validDirs.length)];
-                    m.dirX = chosen[0]; m.dirY = chosen[1];
-                } else { m.dirX *= -1; m.dirY *= -1; }
-            }
-
-            for (let pId in players) {
-                let pX = Math.round(players[pId].gridX); let pY = Math.round(players[pId].gridY);
-                if (pX === m.gridX && pY === m.gridY) {
-                    players[pId].hp = Math.max(0, players[pId].hp - 15);
-                    io.to(pId).emit('hurtEffect'); io.emit('updatePlayers', players); checkDeath(pId);
+        if (monsters.length > 0) {
+            monsters.forEach(m => {
+                let nextX = m.gridX + m.dirX; let nextY = m.gridY + m.dirY;
+                if (nextY >= 0 && nextY < 11 && nextX >= 0 && nextX < 15 && gameGrid[nextY][nextX] === 0) {
+                    m.gridX = nextX; m.gridY = nextY;
+                } else {
+                    let dirs = [[0,1], [0,-1], [1,0], [-1,0]];
+                    let validDirs = dirs.filter(d => {
+                        let tx = m.gridX + d[0]; let ty = m.gridY + d[1];
+                        return ty >= 0 && ty < 11 && tx >= 0 && tx < 15 && gameGrid[ty][tx] === 0;
+                    });
+                    if (validDirs.length > 0) {
+                        let chosen = validDirs[Math.floor(Math.random() * validDirs.length)];
+                        m.dirX = chosen[0]; m.dirY = chosen[1];
+                    } else { m.dirX *= -1; m.dirY *= -1; }
                 }
-            }
-        });
-        io.emit('updateMonsters', monsters);
-    }
-}, 450);
+
+                for (let pId in players) {
+                    let pX = Math.round(players[pId].gridX); let pY = Math.round(players[pId].gridY);
+                    if (pX === m.gridX && pY === m.gridY) {
+                        players[pId].hp = Math.max(0, players[pId].hp - 15);
+                        io.to(pId).emit('hurtEffect'); io.emit('updatePlayers', players); checkDeath(pId);
+                    }
+                }
+            });
+            io.emit('updateMonsters', monsters);
+        }
+    }, config.speed); // Chạy theo tốc độ động tăng tiến của màn đó
+}
+
+// Kích hoạt vòng lặp quái vật lần đầu tiên
+restartMonsterInterval();
 
 function checkDeath(pId) {
-    if (!isMatchActive) return; // Nếu ván đấu đã phân định xong, bỏ qua kiểm tra trùng lặp
+    if (!isMatchActive) return;
 
     if (players[pId] && players[pId].hp <= 0) {
-        isMatchActive = false; // ĐÃ SỬA: Đóng băng ván đấu ngay lập tức khi có người gục ngã
+        isMatchActive = false;
         let currentReward = getCurrentReward();
         
-        // Gửi kết quả thua cuộc cho người hết máu
         io.to(pId).emit('gameOver');
 
-        // Gửi kết quả chiến thắng cho người sống sót còn lại
         for (let otherId in players) {
             if (otherId !== pId) {
                 let winner = players[otherId];
@@ -160,9 +207,6 @@ function checkDeath(pId) {
 io.on('connection', (socket) => {
     socket.on('joinGame', (gender) => {
         let gX = gender === 'nam' ? 1 : 13; let gY = gender === 'nam' ? 1 : 9;
-        
-        // ĐÃ SỬA: Khi có người kết nối hoặc chọn nhân vật, giữ nguyên lượng máu 100 
-        // nhưng KHÔNG gọi resetMatch tự động nữa để tránh làm mất giao diện ván trước của người kia
         players[socket.id] = { id: socket.id, gender: gender, gridX: gX, gridY: gY, hp: 100, moveDelay: 180, lastMoveTime: 0 };
         
         socket.emit('initGame', { grid: gameGrid, level: currentLevel, round: currentRound, reward: getCurrentReward() });
@@ -170,7 +214,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('requestMove', (dir) => {
-        if (!isMatchActive) return; // Đóng băng di chuyển khi ván đấu kết thúc
+        if (!isMatchActive) return;
         let p = players[socket.id]; if (!p || p.hp <= 0) return;
         let now = Date.now(); if (now - p.lastMoveTime < p.moveDelay) return;
         let nX = Math.round(p.gridX) + dir.dirX; let nY = Math.round(p.gridY) + dir.dirY;
@@ -188,7 +232,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('requestPlant', () => {
-        if (!isMatchActive) return; // Đóng băng đặt bom khi ván đấu kết thúc
+        if (!isMatchActive) return;
         let p = players[socket.id]; if (!p || p.hp <= 0) return;
         let curX = Math.round(p.gridX); let curY = Math.round(p.gridY);
         let shroomKey = `${curX}_${curY}`; if (mushrooms[shroomKey]) return;
@@ -245,17 +289,16 @@ io.on('connection', (socket) => {
         }, 2000);
     });
 
-    // ĐÃ SỬA CHÍNH XÁC: Khi nhận lệnh yêu cầu chơi tiếp từ nút bấm của điện thoại
     socket.on('nextMatchRequest', (isWin) => {
-        // Chỉ xử lý nhảy cấp độ nếu ván đấu vừa rồi được ghi nhận là Thắng (người sống sót ấn nút)
+        // Nếu người sống sót ấn nút "Xác nhận chiến thắng", hệ thống tăng hiệp đấu
         if (isWin) {
             currentRound++;
-            if (currentRound > 3) {
+            if (currentRound > 3) { // Đánh hết 3 Hiệp (Round) thì sẽ chính thức qua Màn (Level) tiếp theo
                 currentRound = 1;
                 currentLevel++;
+                if (currentLevel > 3) currentLevel = 1; // Đánh xong Màn 3 thì quay lại Màn 1 giải trí vòng lặp
             }
         }
-        // Gọi làm mới trận đấu một cách chủ động
         resetMatch();
     });
 
