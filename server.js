@@ -13,7 +13,6 @@ let items = {};
 let currentLevel = 1;
 let currentRound = 1;
 
-// Cơ cấu giải thưởng từ Cửa 1 đến Cửa 6 theo yêu cầu
 const rewards = [
     { nam: "Lời tỏ tình từ nhân vật Nữ", nu: "Được tát yêu bạn Nam 5 cái HOẶC nhận 1 vật phẩm tăng sức mạnh bất kỳ cho cửa sau" },
     { nam: "Được mời bạn Nữ đi ăn", nu: "Nhận 10.000đ từ bạn Nam và được tát yêu bạn Nam 10 cái" },
@@ -28,10 +27,9 @@ function getCurrentReward() {
     return rewards[index];
 }
 
-// ĐÃ SỬA: Dọn sạch các ô số 2 ở góc spawn (1,1) và (13,9) để không bao giờ bị đè gạch lúc mới vào game
 let gameGrid = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,0,0,0,0,0,2,0,2,0,0,2,0,0,1], // Dọn góc trên bên trái cho Hoàng tử
+    [1,0,0,0,0,0,2,0,2,0,0,2,0,0,1], 
     [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
     [1,0,0,2,0,2,0,2,0,2,0,2,0,2,1],
     [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
@@ -39,7 +37,7 @@ let gameGrid = [
     [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
     [1,0,2,0,2,0,2,0,2,0,2,0,0,0,1],
     [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
-    [1,2,0,2,0,0,2,0,2,0,0,0,0,0,1], // Dọn góc dưới bên phải cho Công chúa (xóa hết gạch đỏ vùng 3x3)
+    [1,2,0,2,0,0,2,0,2,0,0,0,0,0,1], 
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ];
 
@@ -51,7 +49,6 @@ function generateMonsters(currentGrid) {
         attempts++;
         let gridX = Math.floor(Math.random() * 13) + 1;
         let gridY = Math.floor(Math.random() * 9) + 1;
-        // Quái vật không được xuất hiện ở vùng hồi sinh của người chơi
         if ((gridX < 4 && gridY < 4) || (gridX > 10 && gridY > 6)) continue;
         if (currentGrid[gridY] && currentGrid[gridY][gridX] === 0) {
             let id = 'm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
@@ -80,12 +77,8 @@ function resetMatch() {
     for (let y = 1; y < 10; y++) {
         for (let x = 1; x < 14; x++) {
             if (gameGrid[y][x] !== 1) {
-                // Vùng an toàn 3x3 cho Hoàng tử (Góc trên bên trái)
                 let isPrinceSafeZone = (x <= 3 && y <= 3);
-                
-                // Vùng an toàn 3x3 cho Công chúa (Góc dưới bên phải)
                 let isPrincessSafeZone = (x >= 11 && y >= 7);
-
                 if (isPrinceSafeZone || isPrincessSafeZone) {
                     gameGrid[y][x] = 0; 
                 } else {
@@ -129,16 +122,24 @@ setInterval(() => {
     }
 }, 450);
 
+// ĐÃ SỬA CHÍNH XÁC: Người nào chết thì gửi riêng Thất Bại cho người đó, người kia nhận phần thưởng Chiến Thắng!
 function checkDeath(pId) {
     if (players[pId] && players[pId].hp <= 0) {
-        let deadPlayer = players[pId];
         let currentReward = getCurrentReward();
         
-        io.emit('gameOver', { 
-            loserId: pId,
-            loserGender: deadPlayer.gender,
-            rewardText: deadPlayer.gender === 'nam' ? currentReward.nam : currentReward.nu
-        });
+        // 1. Gửi thông báo thất bại RIÊNG (io.to) cho người vừa hết máu
+        io.to(pId).emit('gameOver');
+
+        // 2. Tìm người chơi còn lại đang ở trong game để trao giải chiến thắng
+        for (let otherId in players) {
+            if (otherId !== pId) {
+                let winner = players[otherId];
+                io.to(otherId).emit('gameWin', {
+                    winnerId: otherId,
+                    rewardText: winner.gender === 'nam' ? currentReward.nam : currentReward.nu
+                });
+            }
+        }
     }
 }
 
@@ -188,7 +189,7 @@ io.on('connection', (socket) => {
                     }
                 });
 
-                let playerDied = false;
+                let deadPlayerIds = [];
                 explodedTiles.forEach(tile => {
                     for (let pId in players) {
                         let pX = Math.round(players[pId].gridX); let pY = Math.round(players[pId].gridY);
@@ -196,7 +197,7 @@ io.on('connection', (socket) => {
                             io.to(pId).emit('hurtEffect'); 
                             players[pId].hp = Math.max(0, players[pId].hp - 25);
                             io.emit('updatePlayers', players);
-                            if (players[pId].hp <= 0) { playerDied = true; }
+                            if (players[pId].hp <= 0) { deadPlayerIds.push(pId); }
                         }
                     }
                 });
@@ -217,14 +218,19 @@ io.on('connection', (socket) => {
                 io.emit('mushroomExploded', { shroom: { id: shroomKey }, explodedTiles, newGrid: gameGrid });
                 io.emit('updateMonsters', monsters); io.emit('updateItems', items);
 
-                if (playerDied) {
-                    checkDeath(socket.id);
+                // Nếu có người trúng bom chết, kích hoạt xử lý kết quả
+                if (deadPlayerIds.length > 0) {
+                    deadPlayerIds.forEach(id => checkDeath(id));
                 } else if (monsters.length === 0) {
+                    // Nếu không ai chết và quái vật hết sạch -> Cả 2 cùng thắng quái vật
                     let currentReward = getCurrentReward();
-                    io.emit('gameWin', {
-                        winnerId: socket.id,
-                        rewardText: p.gender === 'nam' ? currentReward.nam : currentReward.nu
-                    });
+                    for (let id in players) {
+                        let pObj = players[id];
+                        io.to(id).emit('gameWin', {
+                            winnerId: id,
+                            rewardText: pObj.gender === 'nam' ? currentReward.nam : currentReward.nu
+                        });
+                    }
                 }
             }
         }, 2000);
