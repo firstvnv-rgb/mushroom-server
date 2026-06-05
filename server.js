@@ -28,18 +28,18 @@ function getCurrentReward() {
     return rewards[index];
 }
 
-// 1 là Tường đá (bất tử), 2 là Gạch đỏ (phá được), 0 là Đường đi
+// ĐÃ SỬA: Dọn sạch các ô số 2 ở góc spawn (1,1) và (13,9) để không bao giờ bị đè gạch lúc mới vào game
 let gameGrid = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,0,0,2,0,0,2,0,2,0,0,2,0,0,1],
+    [1,0,0,0,0,0,2,0,2,0,0,2,0,0,1], // Dọn góc trên bên trái cho Hoàng tử
     [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
-    [1,2,0,2,0,2,0,2,0,2,0,2,0,2,1],
-    [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
-    [1,2,0,2,0,0,2,0,2,0,0,2,0,2,1],
-    [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
-    [1,0,2,0,2,0,2,0,2,0,2,0,2,0,1],
+    [1,0,0,2,0,2,0,2,0,2,0,2,0,2,1],
     [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
     [1,2,0,2,0,0,2,0,2,0,0,2,0,2,1],
+    [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
+    [1,0,2,0,2,0,2,0,2,0,2,0,0,0,1],
+    [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
+    [1,2,0,2,0,0,2,0,2,0,0,0,0,0,1], // Dọn góc dưới bên phải cho Công chúa (xóa hết gạch đỏ vùng 3x3)
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ];
 
@@ -66,7 +66,6 @@ function generateMonsters(currentGrid) {
 
 monsters = generateMonsters(gameGrid);
 
-// ĐÃ CẬP NHẬT: Tích hợp mở rộng vùng an toàn 3x3 chống kẹt tường cho Công chúa
 function resetMatch() {
     for (let id in players) {
         players[id].hp = 100;
@@ -84,11 +83,11 @@ function resetMatch() {
                 // Vùng an toàn 3x3 cho Hoàng tử (Góc trên bên trái)
                 let isPrinceSafeZone = (x <= 3 && y <= 3);
                 
-                // Vùng an toàn 3x3 cho Công chúa (Góc dưới bên phải) - Giúp không bao giờ bị gạch vây quanh
+                // Vùng an toàn 3x3 cho Công chúa (Góc dưới bên phải)
                 let isPrincessSafeZone = (x >= 11 && y >= 7);
 
                 if (isPrinceSafeZone || isPrincessSafeZone) {
-                    gameGrid[y][x] = 0; // Ép buộc ô trống để tạo lối đi thông thoáng
+                    gameGrid[y][x] = 0; 
                 } else {
                     gameGrid[y][x] = Math.random() > 0.45 ? 2 : 0;
                 }
