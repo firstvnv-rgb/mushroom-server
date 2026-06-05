@@ -12,6 +12,7 @@ let mushrooms = {};
 let items = {}; 
 let currentLevel = 1;
 let currentRound = 1;
+let isMatchActive = true; // Biến kiểm tra ván đấu có đang diễn ra hay không
 
 const rewards = [
     { nam: "Lời tỏ tình từ nhân vật Nữ", nu: "Được tát yêu bạn Nam 5 cái HOẶC nhận 1 vật phẩm tăng sức mạnh bất kỳ cho cửa sau" },
@@ -61,9 +62,13 @@ function generateMonsters(currentGrid) {
     return monsterList;
 }
 
+// Khởi tạo quái vật ban đầu
 monsters = generateMonsters(gameGrid);
 
 function resetMatch() {
+    isMatchActive = true; // Kích hoạt trạng thái ván mới đang chạy
+    
+    // Đặt lại máu và vị trí hồi sinh cho người chơi hiện có
     for (let id in players) {
         players[id].hp = 100;
         players[id].moveDelay = 180;
@@ -74,6 +79,7 @@ function resetMatch() {
         }
     }
 
+    // Làm mới bản đồ gạch ngẫu nhiên, giữ vùng an toàn
     for (let y = 1; y < 10; y++) {
         for (let x = 1; x < 14; x++) {
             if (gameGrid[y][x] !== 1) {
@@ -88,11 +94,17 @@ function resetMatch() {
         }
     }
     mushrooms = {}; items = {}; monsters = generateMonsters(gameGrid);
+    
+    // Phát lệnh làm mới màn hình cho tất cả thiết bị
     io.emit('resetMatch', { grid: gameGrid, level: currentLevel, round: currentRound, reward: getCurrentReward() });
     io.emit('updatePlayers', players); io.emit('updateMonsters', monsters); io.emit('updateItems', items);
 }
 
+// Vòng lặp điều khiển quái vật di chuyển
 setInterval(() => {
+    // ĐÃ SỬA: Nếu ván đấu đã kết thúc (chờ ấn nút chơi lại), đóng băng quái vật không cho di chuyển hay cắn người chơi nữa
+    if (!isMatchActive) return;
+
     if (monsters.length > 0) {
         monsters.forEach(m => {
             let nextX = m.gridX + m.dirX; let nextY = m.gridY + m.dirY;
@@ -122,15 +134,17 @@ setInterval(() => {
     }
 }, 450);
 
-// ĐÃ SỬA CHUYỂN ĐỔI: Cơ chế PvP Sinh Tử mới theo đúng yêu cầu của bạn
 function checkDeath(pId) {
+    if (!isMatchActive) return; // Nếu ván đấu đã phân định xong, bỏ qua kiểm tra trùng lặp
+
     if (players[pId] && players[pId].hp <= 0) {
+        isMatchActive = false; // ĐÃ SỬA: Đóng băng ván đấu ngay lập tức khi có người gục ngã
         let currentReward = getCurrentReward();
         
-        // 1. Gửi kết quả thua cuộc cho người vừa hết máu trước
+        // Gửi kết quả thua cuộc cho người hết máu
         io.to(pId).emit('gameOver');
 
-        // 2. Trao chiến thắng NGAY LẬP TỨC cho người còn sống sót (dù quái còn hay hết)
+        // Gửi kết quả chiến thắng cho người sống sót còn lại
         for (let otherId in players) {
             if (otherId !== pId) {
                 let winner = players[otherId];
@@ -146,12 +160,17 @@ function checkDeath(pId) {
 io.on('connection', (socket) => {
     socket.on('joinGame', (gender) => {
         let gX = gender === 'nam' ? 1 : 13; let gY = gender === 'nam' ? 1 : 9;
+        
+        // ĐÃ SỬA: Khi có người kết nối hoặc chọn nhân vật, giữ nguyên lượng máu 100 
+        // nhưng KHÔNG gọi resetMatch tự động nữa để tránh làm mất giao diện ván trước của người kia
         players[socket.id] = { id: socket.id, gender: gender, gridX: gX, gridY: gY, hp: 100, moveDelay: 180, lastMoveTime: 0 };
+        
         socket.emit('initGame', { grid: gameGrid, level: currentLevel, round: currentRound, reward: getCurrentReward() });
         io.emit('updatePlayers', players); io.emit('updateMonsters', monsters); io.emit('updateItems', items);
     });
 
     socket.on('requestMove', (dir) => {
+        if (!isMatchActive) return; // Đóng băng di chuyển khi ván đấu kết thúc
         let p = players[socket.id]; if (!p || p.hp <= 0) return;
         let now = Date.now(); if (now - p.lastMoveTime < p.moveDelay) return;
         let nX = Math.round(p.gridX) + dir.dirX; let nY = Math.round(p.gridY) + dir.dirY;
@@ -169,6 +188,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('requestPlant', () => {
+        if (!isMatchActive) return; // Đóng băng đặt bom khi ván đấu kết thúc
         let p = players[socket.id]; if (!p || p.hp <= 0) return;
         let curX = Math.round(p.gridX); let curY = Math.round(p.gridY);
         let shroomKey = `${curX}_${curY}`; if (mushrooms[shroomKey]) return;
@@ -218,19 +238,16 @@ io.on('connection', (socket) => {
                 io.emit('mushroomExploded', { shroom: { id: shroomKey }, explodedTiles, newGrid: gameGrid });
                 io.emit('updateMonsters', monsters); io.emit('updateItems', items);
 
-                // KIỂM TRA ĐIỀU KIỆN KẾT THÚC VÁN THEO LUẬT MỚI:
                 if (deadPlayerIds.length > 0) {
-                    // Nếu có người trúng bom chết -> Người còn lại thắng ngay (Trường hợp 2)
                     deadPlayerIds.forEach(id => checkDeath(id));
-                } else {
-                    // Đã loại bỏ logic "quái chết hết thì tự thắng chung". 
-                    // Giờ đây quái hết thì game vẫn chạy bình thường cho đến khi có một người gục ngã (Trường hợp 1).
                 }
             }
         }, 2000);
     });
 
+    // ĐÃ SỬA CHÍNH XÁC: Khi nhận lệnh yêu cầu chơi tiếp từ nút bấm của điện thoại
     socket.on('nextMatchRequest', (isWin) => {
+        // Chỉ xử lý nhảy cấp độ nếu ván đấu vừa rồi được ghi nhận là Thắng (người sống sót ấn nút)
         if (isWin) {
             currentRound++;
             if (currentRound > 3) {
@@ -238,6 +255,7 @@ io.on('connection', (socket) => {
                 currentLevel++;
             }
         }
+        // Gọi làm mới trận đấu một cách chủ động
         resetMatch();
     });
 
