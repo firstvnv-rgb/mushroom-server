@@ -14,13 +14,18 @@ let currentLevel = 1;
 let currentRound = 1;
 
 const rewards = [
-    { nam: "Lời tỏ tình từ Nữ", nu: "Lời tỏ tình từ Nam" },
-    { nam: "Một cái nắm tay", nu: "Một cái nắm tay" },
-    { nam: "Cái ôm ấm áp", nu: "Cái ôm ấm áp" },
-    { nam: "Nụ hôn lên má", nu: "Nụ hôn lên má" },
-    { nam: "Một buổi hẹn hò xem phim", nu: "Một buổi hẹn hò xem phim" }
+    { nam: "Lời tỏ tình từ nhân vật Nữ", nu: "Được tát yêu bạn Nam 5 cái HOẶC nhận 1 vật phẩm tăng sức mạnh bất kỳ cho cửa sau" },
+    { nam: "Được mời bạn Nữ đi ăn", nu: "Nhận 10.000đ từ bạn Nam và được tát yêu bạn Nam 10 cái" },
+    { nam: "Được cầm tay bạn Nữ", nu: "Nhận 50.000đ từ bạn Nam HOẶC tát yêu 20 cái" },
+    { nam: "Được ôm bạn Nữ", nu: "Nhận 500.000đ từ bạn Nam HOẶC tát yêu bạn Nam 50 cái" },
+    { nam: "Được thơm bạn Nữ", nu: "Nhận 50.000đ và một bó hoa từ bạn Nam" },
+    { nam: "Được hôn bạn Nữ", nu: "Nhận 1.000.000đ và một bó hoa từ bạn Nam" }
 ];
-let currentReward = rewards[0];
+
+function getCurrentReward() {
+    let index = (currentLevel - 1) % 6;
+    return rewards[index];
+}
 
 let gameGrid = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
@@ -74,7 +79,7 @@ function resetMatch() {
         }
     }
     mushrooms = {}; items = {}; monsters = generateMonsters(gameGrid);
-    io.emit('resetMatch', { grid: gameGrid, level: currentLevel, round: currentRound, reward: currentReward });
+    io.emit('resetMatch', { grid: gameGrid, level: currentLevel, round: currentRound, reward: getCurrentReward() });
     io.emit('updatePlayers', players); io.emit('updateMonsters', monsters); io.emit('updateItems', items);
 }
 
@@ -108,25 +113,17 @@ setInterval(() => {
     }
 }, 450);
 
-// FIX LỖI TẠI ĐÂY: Phát sự kiện báo chính xác ID người chơi nào vừa bị chết sạch máu
+// ĐÃ SỬA: Xóa bỏ hàm setTimeout tự động chuyển ván ở đây
 function checkDeath(pId) {
     if (players[pId] && players[pId].hp <= 0) {
         let deadPlayer = players[pId];
+        let currentReward = getCurrentReward();
         
-        // Gửi thông báo GameOver ngay lập tức, kèm theo thông tin của người vừa thua cuộc
         io.emit('gameOver', { 
             loserId: pId,
             loserGender: deadPlayer.gender,
             rewardText: deadPlayer.gender === 'nam' ? currentReward.nam : currentReward.nu
         });
-        
-        // Đợi 4 giây hiển thị bảng UI rồi tự động reset ván đấu mới mượt mà
-        setTimeout(() => { 
-            currentRound++; 
-            if (currentRound > 3) { currentRound = 1; currentLevel++; } 
-            currentReward = rewards[(currentLevel-1) % rewards.length]; 
-            resetMatch(); 
-        }, 4000);
     }
 }
 
@@ -134,7 +131,7 @@ io.on('connection', (socket) => {
     socket.on('joinGame', (gender) => {
         let gX = gender === 'nam' ? 1 : 13; let gY = gender === 'nam' ? 1 : 9;
         players[socket.id] = { id: socket.id, gender: gender, gridX: gX, gridY: gY, hp: 100, moveDelay: 180, lastMoveTime: 0 };
-        socket.emit('initGame', { grid: gameGrid, level: currentLevel, round: currentRound, reward: currentReward });
+        socket.emit('initGame', { grid: gameGrid, level: currentLevel, round: currentRound, reward: getCurrentReward() });
         io.emit('updatePlayers', players); io.emit('updateMonsters', monsters); io.emit('updateItems', items);
     });
 
@@ -176,6 +173,19 @@ io.on('connection', (socket) => {
                     }
                 });
 
+                let playerDied = false;
+                explodedTiles.forEach(tile => {
+                    for (let pId in players) {
+                        let pX = Math.round(players[pId].gridX); let pY = Math.round(players[pId].gridY);
+                        if (pX === tile.x && pY === tile.y) {
+                            io.to(pId).emit('hurtEffect'); 
+                            players[pId].hp = Math.max(0, players[pId].hp - 25);
+                            io.emit('updatePlayers', players);
+                            if (players[pId].hp <= 0) { playerDied = true; }
+                        }
+                    }
+                });
+
                 explodedTiles.forEach(tile => {
                     monsters = monsters.filter(m => {
                         if (m.gridX === tile.x && m.gridY === tile.y) {
@@ -186,19 +196,36 @@ io.on('connection', (socket) => {
                         }
                         return true;
                     });
-                    for (let pId in players) {
-                        let pX = Math.round(players[pId].gridX); let pY = Math.round(players[pId].gridY);
-                        if (pX === tile.x && pY === tile.y) {
-                            io.to(pId).emit('hurtEffect'); players[pId].hp = Math.max(0, players[pId].hp - 25);
-                            io.emit('updatePlayers', players); checkDeath(pId);
-                        }
-                    }
                 });
+
                 delete mushrooms[shroomKey];
                 io.emit('mushroomExploded', { shroom: { id: shroomKey }, explodedTiles, newGrid: gameGrid });
                 io.emit('updateMonsters', monsters); io.emit('updateItems', items);
+
+                if (playerDied) {
+                    checkDeath(socket.id);
+                } else if (monsters.length === 0) {
+                    let currentReward = getCurrentReward();
+                    io.emit('gameWin', {
+                        winnerId: socket.id,
+                        rewardText: p.gender === 'nam' ? currentReward.nam : currentReward.nu
+                    });
+                }
             }
         }, 2000);
+    });
+
+    // TÍNH NĂNG MỚI: Lắng nghe khi người chơi nhấn nút "XÁC NHẬN" trên màn hình
+    socket.on('nextMatchRequest', (isWin) => {
+        // Chỉ khi thắng thì mới tiến cấp Cửa/Hiệp, nếu Thua sẽ chơi lại Hiệp đó
+        if (isWin) {
+            currentRound++;
+            if (currentRound > 3) {
+                currentRound = 1;
+                currentLevel++;
+            }
+        }
+        resetMatch();
     });
 
     socket.on('disconnect', () => { delete players[socket.id]; io.emit('updatePlayers', players); });
